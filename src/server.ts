@@ -13,7 +13,8 @@ import { initializeBackupScheduler } from './services/backup';
 import calendarFeedRouter from './routes/calendarFeed';
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT || 4000);
+const HOST = '0.0.0.0';
 
 app.use(cors());
 
@@ -47,7 +48,7 @@ app.get('/health', (req, res) => {
 // Calendar feed routes (plain HTTP GET for calendar app subscription)
 app.use(calendarFeedRouter);
 
-app.listen(PORT, async () => {
+app.listen(PORT, HOST, async () => {
   try {
     await bootstrapAuthUsers(prisma);
     console.log('Auth bootstrap complete for default users.');
@@ -55,7 +56,7 @@ app.listen(PORT, async () => {
     console.error('Failed to bootstrap default auth users:', error);
   }
 
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server listening on ${HOST}:${PORT}`);
   
   // Initialize daily DB backups at 2 AM
   initializeBackupScheduler('0 2 * * *');

@@ -28,8 +28,6 @@ RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
-ENV PORT=4000
-
-EXPOSE 4000
+EXPOSE 8080
 
 CMD ["node", "dist/server.js"]
