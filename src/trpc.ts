@@ -2,8 +2,11 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import { CreateExpressContextOptions } from '@trpc/server/adapters/express';
 import { PrismaClient } from '@prisma/client';
 import { verifyToken } from './middleware/auth';
+import { ensureEnvLoaded } from './shared/env';
 
-const prisma = new PrismaClient();
+ensureEnvLoaded();
+
+export const prisma = new PrismaClient();
 
 export interface User {
   userId: number;

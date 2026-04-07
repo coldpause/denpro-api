@@ -1,25 +1,11 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { config as loadEnv } from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import { ensureEnvLoaded } from './shared/env';
+import { prisma } from './trpc';
+import { bootstrapAuthUsers } from './services/bootstrapAuthUsers';
 
-/** Load monorepo root `.env` whether the process cwd is `denpro-web` or `packages/api`. */
-function loadRootEnv(): void {
-  const candidates = [
-    path.join(process.cwd(), '.env'),
-    path.join(process.cwd(), '../../.env'),
-    path.join(process.cwd(), '../.env'),
-  ];
-  for (const envPath of candidates) {
-    if (fs.existsSync(envPath)) {
-      loadEnv({ path: envPath });
-      return;
-    }
-  }
-}
-loadRootEnv();
+ensureEnvLoaded();
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from './routers';
 import { createContext } from './trpc';
@@ -61,7 +47,14 @@ app.get('/health', (req, res) => {
 // Calendar feed routes (plain HTTP GET for calendar app subscription)
 app.use(calendarFeedRouter);
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  try {
+    await bootstrapAuthUsers(prisma);
+    console.log('Auth bootstrap complete for default users.');
+  } catch (error) {
+    console.error('Failed to bootstrap default auth users:', error);
+  }
+
   console.log(`Server listening on port ${PORT}`);
   
   // Initialize daily DB backups at 2 AM
