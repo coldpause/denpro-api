@@ -40,12 +40,8 @@ export async function bootstrapAuthUsers(prisma: PrismaClient): Promise<void> {
 
     await prisma.user.upsert({
       where: { username: user.username },
-      update: {
-        passwordHash,
-        fullName: user.fullName,
-        role: user.role,
-        active: true,
-      },
+      // Keep existing production users unchanged; only create missing defaults.
+      update: {},
       create: {
         username: user.username,
         passwordHash,
