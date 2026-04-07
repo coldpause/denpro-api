@@ -1,0 +1,959 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// CORE PATIENT & FAMILY MANAGEMENT
+// ============================================================================
+
+model Patient {
+  patientId        Int       @id @default(autoincrement()) @map("patient_id")
+  passToken        String?   @unique @default(uuid()) @map("pass_token")
+  familyId         Int?      @map("family_id")
+  homeId           Int?      @map("home_id") // FK → Address (home address)
+  businessId       Int?      @map("business_id") // FK → Address (business address)
+  patientType      Int       @default(1) @map("patient_type") // 1=head, 2=member, 3=other
+  fileDate         DateTime? @map("file_date") // original file creation date
+  patientReference String?   @map("patient_reference") // external reference / file number
+  title            String?   @map("title") // Mr/Mrs/Dr/etc.
+  firstName        String    @map("first_name")
+  lastName         String?   @map("last_name")
+  middleName       String?   @map("middle_name")
+  nickName         String?   @map("nick_name") // preferred name
+  dateOfBirth      DateTime? @map("date_of_birth")
+  nationality      String?   @map("nationality")
+  gender           String?   @map("gender")
+  email            String?   @map("email")
+  settings         String?   @map("settings") // patient-level config bitfield
+  notes            String?   @map("notes")
+  privateNotes     String?   @map("private_notes") // access-controlled confidential notes
+  physician        String?   @map("physician") // primary physician name
+  physicianContact String?   @map("physician_contact") // physician phone/contact
+  referredBy       String?   @map("referred_by")
+  criticalProblems String?   @map("critical_problems") // critical medical alerts
+  recall           Boolean?  @map("recall") // whether patient is on recall
+  businessPhone    String?   @map("business_phone") // work phone
+  phone            String?   @map("phone")
+  mobile           String?   @map("mobile")
+  referredTo       String?   @map("referred_to")
+  pedo             Boolean   @default(false) // pediatric flag
+  absent           Boolean   @default(false)
+  company          String?   @map("company") // employer name
+  job              String?   @map("job") // occupation
+  category         String?   @map("category") // patient category
+  photo            Bytes?    @map("photo")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Self-reference for family hierarchy
+  familyHead    Patient?  @relation("FamilyMembers", fields: [familyId], references: [patientId])
+  familyMembers Patient[] @relation("FamilyMembers")
+
+  // Relations to other tables
+  addresses              Address[]
+  treatments             Treatment[]
+  appointments           Appointment[]
+  toothMemos             ToothMemo[]
+  credits                Credit[]
+  distributions          Distribution[]
+  prescriptions          Prescription[]
+  patientRecalls         PatientRecall[]
+  patientDiseases        PatientDisease[]
+  patientAllergies       PatientAllergy[]
+  patientFamilyAllergies PatientFamilyAllergy[]
+  patientMedicines       PatientMedicine[]
+  xrays                  Xray[]
+  phoneBooks             PhoneBook[]
+  pcfValues              PCFValue[]
+  waitingRooms           WaitingRoom[]
+  symbols                Symbol[]
+  repositions            Reposition[]
+
+  @@index([familyId])
+  @@index([firstName, middleName])
+  @@map("patient")
+}
+
+model Family {
+  familyId Int     @id @map("family_id")
+  title    String? @map("title")
+  notes    String? @map("notes")
+
+  @@map("family")
+}
+
+model NewPatient {
+  newPatientId Int      @id @default(autoincrement()) @map("new_patient_id")
+  lastName     String?  @map("last_name")
+  middleName   String?  @map("middle_name")
+  firstName    String?  @map("first_name")
+  phone        String?  @map("phone")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  appointments Appointment[]
+  waitingRooms WaitingRoom[]
+
+  @@map("new_patient")
+}
+
+model Address {
+  addressId  Int     @id @default(autoincrement()) @map("address_id")
+  patientId  Int     @map("patient_id")
+  street     String? @map("street")
+  city       String? @map("city")
+  state      String? @map("state")
+  zip        String? @map("zip")
+  countryId  Int?    @map("country_id")
+  postalCode String? @map("postal_code")
+  phone      String? @map("phone") // address-level phone
+  cellular   String? @map("cellular") // address-level mobile
+  fax        String? @map("fax")
+  url        String? @map("url") // website
+
+  patient Patient  @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  country Country? @relation(fields: [countryId], references: [countryId])
+
+  @@map("address")
+}
+
+// ============================================================================
+// STAFF & ORGANIZATION
+// ============================================================================
+
+model Dentist {
+  dentistId    Int     @id @map("dentist_id")
+  name         String  @map("name")
+  specialty    String? @map("specialty")
+  phone        String? @map("phone")
+  active       Boolean @default(true) @map("active")
+  divisionId   Int?    @map("division_id")
+  profile      String? @map("profile") // dentist profile / bio
+  abbreviation String? @map("abbreviation") // short name for calendar views
+
+  division           Division?           @relation(fields: [divisionId], references: [divisionId])
+  treatments         Treatment[]
+  appointments       Appointment[]
+  prescriptions      Prescription[]
+  credits            Credit[]
+  calendarFeedTokens CalendarFeedToken[]
+
+  @@map("dentist")
+}
+
+model Operator {
+  operatorId         Int      @id @map("operator_id")
+  name               String   @map("name")
+  role               String?  @map("role")
+  active             Boolean  @default(true) @map("active")
+  userName           String?  @map("user_name")
+  password           String?  @map("password")
+  tableAuth          String?  @map("table_auth") // table-level permission bitmask
+  viewAuth           String?  @map("view_auth") // view-level permission bitmask
+  profile            String?  @map("profile") // operator profile / role definition
+  patientPrivateArea Boolean? @map("patient_private_area") // access to private notes
+
+  @@map("operator")
+}
+
+model Division {
+  divisionId Int    @id @map("division_id")
+  name       String @map("name")
+
+  dentists Dentist[]
+
+  @@map("division")
+}
+
+model Business {
+  businessId Int     @id @default(autoincrement()) @map("business_id")
+  name       String  @map("name")
+  address    String? @map("address")
+  phone      String? @map("phone")
+  email      String? @map("email")
+  logo       Bytes?  @map("logo")
+
+  @@map("business")
+}
+
+// ============================================================================
+// OPERATIONS & TREATMENTS
+// ============================================================================
+
+model Section {
+  sectionId   Int     @id @map("section_id")
+  name        String  @map("name")
+  description String? @map("description")
+  sortOrder   Int?    @map("sort_order")
+
+  operations Operation[]
+
+  @@map("section")
+}
+
+model Operation {
+  operationId        Int      @id @map("operation_id")
+  name               String   @map("name")
+  sectionId          Int      @map("section_id")
+  graphId            Int?     @map("graph_id")
+  operationReference String?  @map("operation_reference") // CDT / external procedure code
+  price              Decimal  @map("price") // local currency price
+  foreignPrice       Decimal? @map("foreign_price") // foreign currency price (dual currency)
+  discount           Decimal? @map("discount") // default discount percentage
+  labPrice           Decimal? @map("lab_price") // lab cost for this operation
+  settings           String?  @map("settings") // operation config bitfield
+  color              Int?     @map("color")
+  colorEx            Int?     @map("color_ex")
+  pOrder             Int?     @map("p_order") // display order
+  price1             Decimal? @map("price1") // alternate price tier 1
+  price2             Decimal? @map("price2") // alternate price tier 2
+  billable           Boolean? @map("billable") // whether this operation is billable
+
+  section          Section           @relation(fields: [sectionId], references: [sectionId], onDelete: Restrict)
+  graph            Graph?            @relation(fields: [graphId], references: [graphId])
+  treatments       Treatment[]
+  recallOperations RecallOperation[]
+
+  @@index([sectionId])
+  @@map("operation")
+}
+
+model Treatment {
+  treatmentId     Int       @id @default(autoincrement()) @map("treatment_id")
+  patientId       Int       @map("patient_id")
+  operationId     Int       @map("operation_id")
+  dentistId       Int?      @map("dentist_id")
+  toothId         Int?      @map("tooth_id")
+  tooth2Id        Int?      @map("tooth2_id") // for ranges
+  surfaces        String?   @map("surfaces") // e.g. "MOD", "B", "BL", "MOBDL"
+  procStatusId    Int       @map("proc_status_id")
+  dateTime        DateTime? @map("date_time")
+  netPrice        Decimal   @map("net_price")
+  foreignNetPrice Decimal?  @map("foreign_net_price")
+  exchangeRate    Decimal?  @map("exchange_rate")
+  plan            String?   @map("plan")
+  notes           String?   @map("notes")
+
+  patient       Patient        @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  operation     Operation      @relation(fields: [operationId], references: [operationId], onDelete: Restrict)
+  dentist       Dentist?       @relation(fields: [dentistId], references: [dentistId])
+  procStatus    ProcStatus     @relation(fields: [procStatusId], references: [procStatusId], onDelete: Restrict)
+  distributions Distribution[]
+  treatmentExs  TreatmentEx[]
+
+  @@index([patientId])
+  @@index([operationId])
+  @@index([procStatusId])
+  @@index([dateTime])
+  @@map("treatment")
+}
+
+model TreatmentEx {
+  treatmentExId Int     @id @default(autoincrement()) @map("treatment_ex_id")
+  treatmentId   Int     @map("treatment_id")
+  settings1     String? @map("settings1")
+  settings2     String? @map("settings2")
+  settings3     String? @map("settings3")
+
+  treatment Treatment @relation(fields: [treatmentId], references: [treatmentId], onDelete: Cascade)
+
+  @@map("treatment_ex")
+}
+
+model ProcStatus {
+  procStatusId Int     @id @map("proc_status_id")
+  name         String  @map("name")
+  description  String? @map("description")
+  hatchStyle   Int?    @map("hatch_style") // visual hatching pattern for chart
+  abbreviation String? @map("abbreviation") // short code
+
+  treatments Treatment[]
+  symbols    Symbol[]
+
+  @@map("proc_status")
+}
+
+// ============================================================================
+// TEETH & DENTAL ANATOMY
+// ============================================================================
+
+model Teeth {
+  teethId     Int     @id @map("teeth_id")
+  toothNumber Int     @map("tooth_number")
+  name        String? @map("name")
+  pedo        Boolean @default(false) @map("pedo")
+  quadrantId  Int?    @map("quadrant_id")
+  coordinates String? @map("coordinates") // rendering coordinates for tooth shapes
+
+  toothMemos ToothMemo[]
+
+  @@map("teeth")
+}
+
+model ToothMemo {
+  toothMemoId Int    @id @default(autoincrement()) @map("tooth_memo_id")
+  patientId   Int    @map("patient_id")
+  toothId     Int    @map("tooth_id")
+  memo        String @map("memo")
+
+  patient Patient @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  teeth   Teeth   @relation(fields: [toothId], references: [teethId], onDelete: Restrict)
+
+  @@map("tooth_memo")
+}
+
+// ============================================================================
+// APPOINTMENTS & WAITING ROOM
+// ============================================================================
+
+model Appointment {
+  appointmentId     Int       @id @default(autoincrement()) @map("appointment_id")
+  token             String?   @unique @default(uuid()) @map("token")
+  patientId         Int?      @map("patient_id")
+  newPatientId      Int?      @map("new_patient_id")
+  dentistId         Int       @map("dentist_id")
+  appointmentTypeId Int?      @map("appointment_type_id")
+  operatorId        Int?      @map("operator_id") // who booked the appointment
+  roomId            Int?      @map("room_id")
+  date              DateTime  @map("date")
+  startTime         DateTime? @map("start_time")
+  endTime           DateTime? @map("end_time")
+  duration          Int?      @map("duration")
+  absent            Boolean?  @map("absent") // no-show flag
+  notes             String?   @map("notes")
+  status            Int?      @map("status")
+
+  patient         Patient?         @relation(fields: [patientId], references: [patientId], onDelete: SetNull)
+  newPatient      NewPatient?      @relation(fields: [newPatientId], references: [newPatientId], onDelete: SetNull)
+  dentist         Dentist          @relation(fields: [dentistId], references: [dentistId], onDelete: Restrict)
+  appointmentType AppointmentType? @relation(fields: [appointmentTypeId], references: [appointmentTypeId])
+  room            Room?            @relation(fields: [roomId], references: [roomId], onDelete: SetNull)
+  waitingRooms    WaitingRoom[]
+
+  @@map("appointment")
+}
+
+model AppointmentType {
+  appointmentTypeId Int    @id @map("appointment_type_id")
+  name              String @map("name")
+  color             Int?   @map("color")
+  duration          Int?   @map("duration")
+
+  appointments Appointment[]
+
+  @@map("appointment_type")
+}
+
+model WaitingRoom {
+  waitingRoomId     Int       @id @default(autoincrement()) @map("waiting_room_id")
+  patientId         Int?      @map("patient_id")
+  newPatientId      Int?      @map("new_patient_id")
+  arrivalTime       DateTime  @map("arrival_time")
+  appointmentTime   DateTime? @map("appointment_time") // scheduled time
+  duration          Int?      @map("duration") // expected duration
+  appointmentTypeId Int?      @map("appointment_type_id")
+  dentistId         Int?      @map("dentist_id") // assigned dentist
+  memo              String?   @map("memo") // notes for this visit
+  appointmentId     Int?      @map("appointment_id") // link to appointment
+  status            Int?      @map("status")
+
+  patient     Patient?     @relation(fields: [patientId], references: [patientId], onDelete: SetNull)
+  newPatient  NewPatient?  @relation(fields: [newPatientId], references: [newPatientId], onDelete: SetNull)
+  appointment Appointment? @relation(fields: [appointmentId], references: [appointmentId])
+
+  @@map("waiting_room")
+}
+
+// ============================================================================
+// ACCOUNTS & FINANCIAL
+// ============================================================================
+
+model Account {
+  accountId       Int      @id @map("account_id")
+  name            String   @map("name")
+  accountTypeId   Int      @map("account_type_id")
+  parentAccountId Int?     @map("parent_account_id")
+  balance         Decimal? @map("balance")
+  active          Boolean  @default(true) @map("active")
+
+  accountType    AccountType @relation(fields: [accountTypeId], references: [accountTypeId], onDelete: Restrict)
+  parentAccount  Account?    @relation("ParentChildAccounts", fields: [parentAccountId], references: [accountId])
+  childAccounts  Account[]   @relation("ParentChildAccounts")
+  vouchersDebit  Voucher[]   @relation("VoucherDebitAccount")
+  vouchersCredit Voucher[]   @relation("VoucherCreditAccount")
+  phoneBooks     PhoneBook[]
+
+  @@map("account")
+}
+
+model AccountType {
+  accountTypeId Int    @id @map("account_type_id")
+  name          String @map("name")
+
+  accounts Account[]
+
+  @@map("account_type")
+}
+
+model Credit {
+  creditId      Int       @id @default(autoincrement()) @map("credit_id")
+  patientId     Int       @map("patient_id")
+  operatorId    Int?      @map("operator_id") // who entered this credit
+  creditType    Int       @map("credit_type") // 1=payment, 2=charge
+  amount        Decimal   @map("amount")
+  foreignAmount Decimal?  @map("foreign_amount")
+  exchangeRate  Decimal?  @map("exchange_rate")
+  currencyCode  String?   @map("currency_code")
+  status        Int       @map("status") // 2=partial, 3=fully distributed
+  dateTime      DateTime? @map("date_time")
+  dueDate       DateTime? @map("due_date") // payment due date
+  notes         String?   @map("notes")
+  voucherId     Int?      @map("voucher_id")
+  dentistId     Int?      @map("dentist_id") // revenue attribution
+  type          Int?      @map("type") // credit type sub-classification
+
+  patient       Patient        @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  voucher       Voucher?       @relation(fields: [voucherId], references: [voucherId])
+  dentist       Dentist?       @relation(fields: [dentistId], references: [dentistId])
+  distributions Distribution[]
+
+  @@index([patientId])
+  @@index([creditType])
+  @@map("credit")
+}
+
+model Distribution {
+  distributionId Int     @id @default(autoincrement()) @map("distribution_id")
+  creditId       Int     @map("credit_id")
+  treatmentId    Int?    @map("treatment_id")
+  patientId      Int     @map("patient_id")
+  amount         Decimal @map("amount")
+
+  credit    Credit     @relation(fields: [creditId], references: [creditId], onDelete: Cascade)
+  treatment Treatment? @relation(fields: [treatmentId], references: [treatmentId], onDelete: SetNull)
+  patient   Patient    @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+
+  @@index([creditId])
+  @@index([treatmentId])
+  @@index([patientId])
+  @@map("distribution")
+}
+
+model Voucher {
+  voucherId        Int      @id @default(autoincrement()) @map("voucher_id")
+  voucherTypeId    Int      @map("voucher_type_id")
+  operatorId       Int?     @map("operator_id") // who created the voucher
+  voucherReference String?  @map("voucher_reference") // voucher reference number
+  date             DateTime @map("date")
+  debitAccountId   Int?     @map("debit_account_id") // double-entry: debit account
+  debitAmount      Decimal? @map("debit_amount") // double-entry: debit amount
+  creditAccountId  Int?     @map("credit_account_id") // double-entry: credit account
+  creditAmount     Decimal? @map("credit_amount") // double-entry: credit amount
+  amount           Decimal  @map("amount") // kept for backward compat
+  description      String?  @map("description")
+  accountId        Int?     @map("account_id") // kept for backward compat
+  rate             Decimal? @map("rate") // exchange rate on voucher
+
+  voucherType   VoucherType @relation(fields: [voucherTypeId], references: [voucherTypeId], onDelete: Restrict)
+  debitAccount  Account?    @relation("VoucherDebitAccount", fields: [debitAccountId], references: [accountId])
+  creditAccount Account?    @relation("VoucherCreditAccount", fields: [creditAccountId], references: [accountId])
+  credits       Credit[]
+
+  @@map("voucher")
+}
+
+model VoucherType {
+  voucherTypeId Int    @id @map("voucher_type_id")
+  name          String @map("name")
+
+  vouchers Voucher[]
+
+  @@map("voucher_type")
+}
+
+model MoneyCode {
+  moneyCodeId Int     @id @default(autoincrement()) @map("money_code_id")
+  formId      Int     @map("form_id")
+  class       Int     @map("class")
+  code        String? @map("code")
+  description String? @map("description")
+
+  @@map("money_code")
+}
+
+// ============================================================================
+// MEDICATIONS & PRESCRIPTIONS
+// ============================================================================
+
+model Prescription {
+  prescriptionId Int      @id @default(autoincrement()) @map("prescription_id")
+  patientId      Int      @map("patient_id")
+  dentistId      Int?     @map("dentist_id")
+  date           DateTime @map("date")
+  notes          String?  @map("notes")
+
+  patient Patient              @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  dentist Dentist?             @relation(fields: [dentistId], references: [dentistId])
+  details PrescriptionDetail[]
+
+  @@map("prescription")
+}
+
+model PrescriptionDetail {
+  prescriptionDetailId Int     @id @default(autoincrement()) @map("prescription_detail_id")
+  prescriptionId       Int     @map("prescription_id")
+  medicineId           Int?    @map("medicine_id")
+  dosage               String? @map("dosage")
+  instructions         String? @map("instructions")
+  quantity             Int?    @map("quantity")
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
+  medicine     Medicine?    @relation(fields: [medicineId], references: [medicineId])
+
+  @@map("prescription_detail")
+}
+
+model Medicine {
+  medicineId       Int     @id @default(autoincrement()) @map("medicine_id")
+  name             String  @map("name")
+  category         String? @map("category")
+  defaultDosage    String? @map("default_dosage")
+  active           Boolean @default(true) @map("active")
+  usage            String? @map("usage") // how the medicine is used
+  properties       String? @map("properties") // drug properties / pharmacological info
+  indication       String? @map("indication") // what conditions this treats
+  contraindication String? @map("contraindication") // when NOT to prescribe
+  composition      String? @map("composition") // active ingredients / formulation
+  precaution       String? @map("precaution") // usage warnings
+  familyId         Int?    @map("family_id") // drug family / therapeutic class
+
+  prescriptionDetails    PrescriptionDetail[]
+  patientMedicines       PatientMedicine[]
+  patientFamilyAllergies PatientFamilyAllergy[]
+
+  @@map("medicine")
+}
+
+model PatientMedicine {
+  patientMedicineId Int @id @default(autoincrement()) @map("patient_medicine_id")
+  patientId         Int @map("patient_id")
+  medicineId        Int @map("medicine_id")
+
+  patient  Patient  @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  medicine Medicine @relation(fields: [medicineId], references: [medicineId], onDelete: Cascade)
+
+  @@map("patient_medicine")
+}
+
+model PatientFamilyAllergy {
+  patientFamilyAllergyId Int @id @default(autoincrement()) @map("patient_family_allergy_id")
+  patientId              Int @map("patient_id")
+  medicineId             Int @map("medicine_id")
+
+  patient  Patient  @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  medicine Medicine @relation(fields: [medicineId], references: [medicineId], onDelete: Cascade)
+
+  @@map("patient_family_allergy")
+}
+
+// ============================================================================
+// RECALLS
+// ============================================================================
+
+model Recall {
+  recallId     Int     @id @default(autoincrement()) @map("recall_id")
+  name         String  @map("name")
+  intervalDays Int?    @map("interval_days")
+  description  String? @map("description")
+
+  patientRecalls   PatientRecall[]
+  recallOperations RecallOperation[]
+
+  @@map("recall")
+}
+
+model PatientRecall {
+  patientRecallId Int       @id @default(autoincrement()) @map("patient_recall_id")
+  patientId       Int       @map("patient_id")
+  recallId        Int       @map("recall_id")
+  dueDate         DateTime? @map("due_date")
+  completedDate   DateTime? @map("completed_date")
+  status          Int?      @map("status")
+
+  patient Patient @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  recall  Recall  @relation(fields: [recallId], references: [recallId], onDelete: Restrict)
+
+  @@map("patient_recall")
+}
+
+model RecallOperation {
+  recallOperationId Int @id @default(autoincrement()) @map("recall_operation_id")
+  recallId          Int @map("recall_id")
+  operationId       Int @map("operation_id")
+
+  recall    Recall    @relation(fields: [recallId], references: [recallId], onDelete: Cascade)
+  operation Operation @relation(fields: [operationId], references: [operationId], onDelete: Restrict)
+
+  @@map("recall_operation")
+}
+
+// ============================================================================
+// PATIENT MEDICAL HISTORY
+// ============================================================================
+
+model PatientDisease {
+  patientDiseaseId Int  @id @default(autoincrement()) @map("patient_disease_id")
+  patientId        Int  @map("patient_id")
+  diseaseId        Int? @map("disease_id")
+
+  patient Patient  @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  disease Disease? @relation(fields: [diseaseId], references: [diseaseId])
+
+  @@map("patient_disease")
+}
+
+model PatientAllergy {
+  patientAllergyId Int     @id @default(autoincrement()) @map("patient_allergy_id")
+  patientId        Int     @map("patient_id")
+  allergyName      String? @map("allergy_name")
+
+  patient Patient @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+
+  @@map("patient_allergy")
+}
+
+model Disease {
+  diseaseId    Int    @id @default(autoincrement()) @map("disease_id")
+  name         String @map("name")
+  disSortOrder Int?   @map("dis_sort_order")
+
+  patientDiseases PatientDisease[]
+
+  @@map("disease")
+}
+
+// ============================================================================
+// RADIOGRAPHY
+// ============================================================================
+
+model Xray {
+  xrayId     Int      @id @default(autoincrement()) @map("xray_id")
+  patientId  Int      @map("patient_id")
+  xrayTypeId Int?     @map("xray_type_id")
+  date       DateTime @map("date")
+  filePath   String?  @map("file_path")
+  imageData  String?  @map("image_data")
+  mimeType   String?  @map("mime_type")
+  toothId    Int?     @map("tooth_id")
+  tooth2Id   Int?     @map("tooth2_id") // second tooth for range x-rays
+  base       String?  @map("base") // legacy base field
+  notes      String?  @map("notes")
+
+  patient  Patient   @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  xrayType XrayType? @relation(fields: [xrayTypeId], references: [xrayTypeId])
+
+  @@map("xray")
+}
+
+model XrayType {
+  xrayTypeId Int    @id @map("xray_type_id")
+  name       String @map("name")
+
+  xrays Xray[]
+
+  @@map("xray_type")
+}
+
+// ============================================================================
+// GRAPHICS & SYMBOLS
+// ============================================================================
+
+model Graph {
+  graphId        Int     @id @map("graph_id")
+  name           String? @map("name")
+  symbolData     String? @map("symbol_data")
+  controlSurface String? @map("control_surface") // legacy control surface data
+
+  operations Operation[]
+
+  @@map("graph")
+}
+
+model ExtraSymbol {
+  extraSymbolId Int     @id @default(autoincrement()) @map("extra_symbol_id")
+  name          String? @map("name")
+  symbolData    String? @map("symbol_data")
+
+  @@map("extra_symbol")
+}
+
+model Symbol {
+  symbolId       Int     @id @default(autoincrement()) @map("symbol_id")
+  patientId      Int     @map("patient_id")
+  procStatusId   Int?    @map("proc_status_id")
+  symbolsData    String? @map("symbols_data") // chart overlay data (was BLOB)
+  connectionData String? @map("connection_data") // bridge/connection data (was BLOB)
+  pedo           Boolean @default(false) @map("pedo")
+
+  patient    Patient     @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+  procStatus ProcStatus? @relation(fields: [procStatusId], references: [procStatusId])
+
+  @@map("symbol")
+}
+
+model Reposition {
+  repositionId     Int     @id @default(autoincrement()) @map("reposition_id")
+  patientId        Int     @map("patient_id")
+  repositionStream String? @map("reposition_stream") // tooth movement data (was BLOB)
+  orderStream      String? @map("order_stream") // ordering data (was BLOB)
+  pedo             Boolean @default(false) @map("pedo")
+
+  patient Patient @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+
+  @@map("reposition")
+}
+
+// ============================================================================
+// LAB MANAGEMENT
+// ============================================================================
+
+model LabInvoice {
+  labInvoiceId Int       @id @default(autoincrement()) @map("lab_invoice_id")
+  accountId    Int?      @map("account_id")
+  voucherId    Int?      @map("voucher_id")
+  date         DateTime? @map("date")
+  reference    String?   @map("reference")
+  currencyId   Int?      @map("currency_id")
+
+  details LabInvoiceDetail[]
+
+  @@map("lab_invoice")
+}
+
+model LabInvoiceDetail {
+  labInvoiceDetailId Int      @id @default(autoincrement()) @map("lab_invoice_detail_id")
+  labInvoiceId       Int      @map("lab_invoice_id")
+  labTaskId          Int?     @map("lab_task_id")
+  costPrice          Decimal? @map("cost_price")
+
+  labInvoice LabInvoice @relation(fields: [labInvoiceId], references: [labInvoiceId], onDelete: Cascade)
+
+  @@map("lab_invoice_detail")
+}
+
+model LabTask {
+  labTaskId   Int      @id @default(autoincrement()) @map("lab_task_id")
+  treatmentId Int?     @map("treatment_id")
+  accountId   Int?     @map("account_id")
+  costPrice   Decimal? @map("cost_price")
+
+  @@map("lab_task")
+}
+
+// ============================================================================
+// CONTACTS & DIRECTORIES
+// ============================================================================
+
+model PhoneBook {
+  phoneBookId Int     @id @default(autoincrement()) @map("phone_book_id")
+  patientId   Int?    @map("patient_id")
+  name        String  @map("name")
+  phone       String? @map("phone")
+  mobile      String? @map("mobile")
+  email       String? @map("email")
+  company     String? @map("company")
+  notes       String? @map("notes")
+  accountId   Int?    @map("account_id")
+
+  patient Patient? @relation(fields: [patientId], references: [patientId])
+  account Account? @relation(fields: [accountId], references: [accountId], onDelete: SetNull)
+
+  @@map("phone_book")
+}
+
+// ============================================================================
+// GEOGRAPHIC & ORGANIZATIONAL REFERENCE
+// ============================================================================
+
+model Country {
+  countryId Int     @id @map("country_id")
+  name      String  @map("name")
+  code      String? @map("code")
+
+  addresses Address[]
+
+  @@map("country")
+}
+
+// ============================================================================
+// CUSTOM FIELDS & SETTINGS
+// ============================================================================
+
+model PCFTree {
+  pcfTreeId       Int    @id @default(autoincrement()) @map("pcf_tree_id")
+  parentPCFTreeId Int?   @map("parent_pcf_tree_id")
+  name            String @map("name")
+  fieldOrder      Int?   @map("field_order")
+
+  parentPCFTree PCFTree?   @relation("ChildPCFTrees", fields: [parentPCFTreeId], references: [pcfTreeId])
+  childPCFTrees PCFTree[]  @relation("ChildPCFTrees")
+  pcfValues     PCFValue[]
+
+  @@map("pcf_tree")
+}
+
+model PCFValue {
+  pcfValueId Int     @id @default(autoincrement()) @map("pcf_value_id")
+  pcfId      Int     @map("pcf_id")
+  patientId  Int     @map("patient_id")
+  value      String? @map("value")
+
+  pcfTree PCFTree @relation(fields: [pcfId], references: [pcfTreeId], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [patientId], onDelete: Cascade)
+
+  @@map("pcf_value")
+}
+
+// ============================================================================
+// SYSTEM CONFIGURATION & SETTINGS
+// ============================================================================
+
+model GlobalSetting {
+  id    Int     @id @default(autoincrement())
+  key   String  @unique @map("key")
+  value String? @map("value")
+
+  @@map("global_setting")
+}
+
+model PersonalSetting {
+  id     Int     @id @default(autoincrement())
+  userId Int     @map("user_id")
+  key    String  @map("key")
+  value  String? @map("value")
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("personal_setting")
+}
+
+model User {
+  userId       Int      @id @default(autoincrement()) @map("user_id")
+  username     String   @unique @map("username")
+  passwordHash String   @map("password_hash")
+  fullName     String?  @map("full_name")
+  role         String   @default("user") @map("role")
+  active       Boolean  @default(true) @map("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  personalSettings   PersonalSetting[]
+  auditLogs          AuditLog[]
+  refreshTokens      RefreshToken[]
+  calendarFeedTokens CalendarFeedToken[]
+
+  @@map("user")
+}
+
+// ============================================================================
+// ORDERING & POSITION MANAGEMENT
+// ============================================================================
+
+model OrderAndPosition {
+  id         Int    @id @default(autoincrement())
+  entityType String @map("entity_type")
+  entityId   Int    @map("entity_id")
+  position   Int    @map("position")
+
+  @@map("order_and_position")
+}
+
+// ============================================================================
+// REFERENCE DATA
+// ============================================================================
+
+model Month {
+  monthId Int    @id @map("month_id")
+  name    String @map("name")
+
+  @@map("month")
+}
+
+// ============================================================================
+// PRODUCTION HARDENING (AUDIT & AUTH)
+// ============================================================================
+
+model AuditLog {
+  auditLogId Int      @id @default(autoincrement())
+  userId     Int
+  action     String
+  entity     String
+  entityId   Int
+  before     Json?
+  after      Json?
+  timestamp  DateTime @default(now())
+  ipAddress  String?
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@map("audit_log")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@index([token])
+  @@index([userId])
+  @@map("refresh_token")
+}
+
+// ============================================================================
+// CALENDAR SYNC (iCal Feed)
+// ============================================================================
+
+model CalendarFeedToken {
+  id         Int       @id @default(autoincrement())
+  token      String    @unique // random URL-safe token
+  label      String // e.g. "Dr. Varjabedian's Schedule"
+  dentistId  Int?      @map("dentist_id") // null = all dentists
+  createdBy  Int       @map("created_by")
+  active     Boolean   @default(true)
+  daysAhead  Int       @default(90) // how far ahead to include
+  daysBehind Int       @default(7) // how far back to include
+  createdAt  DateTime  @default(now())
+  lastAccess DateTime? @map("last_access")
+
+  dentist Dentist? @relation(fields: [dentistId], references: [dentistId])
+  user    User     @relation(fields: [createdBy], references: [userId])
+
+  @@index([token])
+  @@map("calendar_feed_token")
+}
+
+// ============================================================================
+// ROOMS
+// ============================================================================
+
+model Room {
+  roomId      Int           @id @default(autoincrement()) @map("room_id")
+  name        String        @map("name")
+  colorCode   String?       @map("color_code")
+  isActive    Boolean       @default(true) @map("is_active")
+  appointments Appointment[]
+
+  @@map("room")
+}
